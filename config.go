@@ -37,6 +37,8 @@ var config struct {
 	kube_api string
 	// insecure connection?
 	kube_insecure bool
+	// the port kubelet is serving health checks on
+	kube_health_port int
 	// the metadata used to filter the nodes
 	metadata string
 	// the socket for fleet
@@ -61,6 +63,7 @@ func init() {
 	flag.StringVar(&config.metadata, "metadata", "role=kubernetes", "the fleet metadata with are using to filter nodes")
 	flag.StringVar(&config.fleet_socket, "fleet", "unix://var/run/fleet.sock", "the path to the fleet unix socket")
 	flag.StringVar(&config.kube_version, "api-version", "v1", "the kubernetes api version")
+	flag.IntVar(&config.kube_health_port, "port", 10255, "the port the kubelet is running the health endpoint on")
 	flag.IntVar(&config.time_interval, "interval", 30, "the amount of time in seconds to check if nodes registered")
 }
 

@@ -17,6 +17,8 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -73,14 +75,22 @@ func main() {
 						tag, config.tag_value)
 					continue
 				}
+
+				// step: check to see if the node is healthy
+				if health := nodeHealthy(machine); !health {
+					glog.Errorf("The machine: %s is marked as unhealthy, skipping the node for now", machine.Name)
+					continue
+				}
+
 				// step: check if the node is registered
 				node, registered, err := kapi.IsRegistered(machine.Name)
 				if err != nil {
 					glog.Errorf("Unable to check if machine: %s is registered in kubernetes, error: %s", machine.Name, err)
 					continue
 				}
+
+				// step: is the node already registered?
 				if registered {
-					glog.V(3).Infof("Node Condition: %V", node.Status.Conditions[0])
 					node_status := node.Status.Conditions[0].Type
 					glog.V(4).Infof("Node: %s already register, status: %s", node.Name, node_status)
 
@@ -111,4 +121,24 @@ func main() {
 		case <- time.After(time.Duration(config.time_interval) * time.Second):
 		}
 	}
+}
+
+// nodeHealthy() ... checks to see if the node in a healthy condition
+func nodeHealthy(machine *Machine) bool {
+	glog.V(4).Infof("Checking if the node: %s is in a healthy condition on port: %d", machine.Name, config.kube_health_port)
+	// step: call the /healthz url
+	url := fmt.Sprintf("http://%s:%d/healthz", machine.Name, config.kube_health_port)
+	response, err := http.Get(url)
+	if err != nil {
+		glog.Errorf("Unable to check the health of the node: %s, error: %s", machine.Name, err)
+		return false
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusBadRequest {
+		glog.V(4).Infof("Machine: %s is healthy and responding to /healthz", machine.Name)
+		return true
+	}
+
+	glog.V(4).Infof("Machine: %s is not in a healthy condition, response: %s", machine.Name, response.Body)
+	return false
 }
