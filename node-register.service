@@ -25,5 +25,4 @@ ExecStart=/opt/bin/node-register \
   -v=3
 
 [X-Fleet]
-Global=true
 MachineMetadata=role=kubernetes
