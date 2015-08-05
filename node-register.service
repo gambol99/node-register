@@ -1,0 +1,29 @@
+#
+#   Author: Rohith
+#   Date: 2015-08-05 10:38:59 +0100 (Wed, 05 Aug 2015)
+#
+#  vim:ts=2:sw=2:et
+#
+
+[Unit]
+Description=Node Registration Service
+Documentation=http://github.com/gambol99/node-register
+Requires=fleet.service
+After=fleet.service
+
+[Service]
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=0
+
+ExecStart=/opt/bin/node-register \
+  -fleet=unix://var/run/fleet.sock \
+  -interval=20 \
+  -metadata=role=kubernetes \
+  -token-file=/run/node-register/token
+  -logtostderr=true \
+  -v=3
+
+[X-Fleet]
+Global=true
+MachineMetadata=role=kubernetes
