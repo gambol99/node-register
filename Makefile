@@ -4,17 +4,27 @@
 #
 #  vim:ts=2:sw=2:et
 #
-NAME="node-register"
+NAME=node-register
 AUTHOR="gambol99"
+HARDWARE=$(shell uname -m)
+VERSION=$(shell awk '/VERSION/ { print $$3 }' version.go | sed 's/"//g')
 
-.PHONY: build docker clean
+.PHONY: build docker clean release
 
 build:
 	mkdir -p ./bin
+	mkdir -p ./release
 	CGO_ENABLED=0 GOOS=linux go build -a -tags netgo -ldflags '-w' -o bin/node-register
-	
+
 docker: build
 	sudo docker build -t ${AUTHOR}/${NAME} .
 
 clean:
 	rm -rf ./bin
+	rm -rf ./release
+
+release:
+	mkdir -p release
+	CGO_ENABLED=0 GOOS=linux go build -a -tags netgo -ldflags '-w' -o release/${NAME}
+	cd release && gzip -c ${NAME} > ${NAME}_${VERSION}_linux_${HARDWARE}.gz
+	rm -f release/${NAME}

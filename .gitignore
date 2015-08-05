@@ -6,6 +6,7 @@
 .idea/
 stage/
 bin/
+release/
 
 # Folders
 _obj
