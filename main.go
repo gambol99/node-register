@@ -46,8 +46,7 @@ func main() {
 	// step: create a client to the kubernetes api
 	kapi, err := newKubernetesInterface()
 	if err != nil {
-		glog.Errorf("Failed to create a kubernetes client, endpoint: %s, error: %s",
-			config.kube_api, err)
+		glog.Errorf("Failed to create a kubernetes client, endpoint: %s, error: %s", config.kube_api, err)
 		os.Exit(1)
 	}
 
@@ -113,12 +112,34 @@ func main() {
 				}
 			}
 		}
+
+		// step: are we reaping nodes?
+		if config.kube_node_repear {
+			// step: grab a list of nodes from kubernetes
+			if nodes, err := kapi.GetFailedNodes(); err != nil {
+				glog.Errorf("Failed to retrieve the nodes from kubernetes, error: %s", err)
+			} else {
+				glog.V(4).Infof("Found %d nodes in a failed state", len(nodes))
+				for _, x := range nodes {
+					condition := x.Status.Conditions[0]
+					time_passed := time.Since(condition.LastHeartbeatTime.Time)
+					glog.V(5).Infof("Node: %s has been down for %s", x.Name, time_passed)
+					if time_passed > config.kube_node_downtime {
+						glog.V(3).Infof("The node: %s has been down for %s, removing the node now", x.Name, time_passed)
+						if err := kapi.DeleteNode(x.Name); err != nil {
+							glog.Errorf("Failed to remove the node: %s from kubernetes, error: %s", err)
+						}
+					}
+				}
+			}
+		}
+
 		// wait for either a timer or a signal
 		select {
 		case <-signalChannel:
 			glog.Infof("Recieved a shutdown signal, exiting")
 			os.Exit(0)
-		case <- time.After(time.Duration(config.time_interval) * time.Second):
+		case <- time.After(config.time_interval):
 		}
 	}
 }

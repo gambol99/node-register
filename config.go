@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"os"
 	"net/url"
+	"time"
 )
 
 var config struct {
@@ -39,17 +40,26 @@ var config struct {
 	kube_insecure bool
 	// the port kubelet is serving health checks on
 	kube_health_port int
+	// enable the node reaper
+	kube_node_repear bool
+	// the time for a node to be offline and reaper
+	kube_node_downtime time.Duration
 	// the metadata used to filter the nodes
 	metadata string
 	// the socket for fleet
 	fleet_socket string
 	// the interval to wait
-	time_interval int
+	time_interval time.Duration
 	// the tag name
 	tag_name string
 	// the tag value
 	tag_value string
 }
+
+const (
+	DEFAULT_SYNC_INTERVAL   = time.Duration(60) * time.Second
+	DEFAULT_REAPER_INTERVAL = time.Duration(1) * time.Hour
+)
 
 var (
 	metadata_regex = regexp.MustCompile("^([[:alnum:]]*)=([[:alnum:]]*)$")
@@ -63,8 +73,10 @@ func init() {
 	flag.StringVar(&config.metadata, "metadata", "role=kubernetes", "the fleet metadata with are using to filter nodes")
 	flag.StringVar(&config.fleet_socket, "fleet", "unix://var/run/fleet.sock", "the path to the fleet unix socket")
 	flag.StringVar(&config.kube_version, "api-version", "v1", "the kubernetes api version")
+	flag.BoolVar(&config.kube_node_repear, "node-reaper", false, "enable the removal of dead nodes from the kubernetes")
+	flag.DurationVar(&config.kube_node_downtime, "reap-interval", DEFAULT_REAPER_INTERVAL, "the amount of time a node can be down before removal")
+	flag.DurationVar(&config.time_interval, "interval", DEFAULT_SYNC_INTERVAL, "the amount of time in seconds to check if nodes registered")
 	flag.IntVar(&config.kube_health_port, "port", 10255, "the port the kubelet is running the health endpoint on")
-	flag.IntVar(&config.time_interval, "interval", 30, "the amount of time in seconds to check if nodes registered")
 }
 
 func parseConfig() error {

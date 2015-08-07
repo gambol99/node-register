@@ -3,10 +3,12 @@
 *.a
 *.so
 *.iml
+*.swp
 .idea/
 stage/
 bin/
 release/
+node-register
 
 # Folders
 _obj

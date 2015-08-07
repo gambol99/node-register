@@ -73,8 +73,33 @@ func newKubernetesInterface() (*KubernetesInterface, error) {
 }
 
 // GetNodes() ... get a list of registered kubernetes nodes
-func (r KubernetesInterface) GetNodes() (*api.NodeList, error) {
-	return r.client.Nodes().List(labels.Everything(), fields.Everything())
+func (r KubernetesInterface) GetNodes() ([]api.Node, error) {
+	nodes, err := r.client.Nodes().List(labels.Everything(), fields.Everything())
+	if err != nil {
+		return nil, err
+	}
+	return nodes.Items, err
+}
+
+// GetFailedNodes() ... get a list of nodes in a failed state
+func (r KubernetesInterface) GetFailedNodes() ([]api.Node, error) {
+	// step: first get the list and then filter then
+	filtered := make([]api.Node, 0)
+	nodes, err := r.GetNodes()
+	if err != nil {
+		return nil, err
+	}
+	for _, x := range nodes {
+		// step: skip any node without conditions
+		if len(x.Status.Conditions) <= 0 {
+			continue
+		}
+		condition := x.Status.Conditions[0]
+		if condition.Type != "Ready" {
+			filtered = append(filtered, x)
+		}
+	}
+	return filtered, nil
 }
 
 // IsRegistered() ... checks to see if a node is registered with kubernetes
@@ -85,7 +110,7 @@ func (r KubernetesInterface) IsRegistered(name string) (*api.Node, bool, error) 
 	if err != nil {
 		return nil, false, err
 	}
-	for _, x := range nodes.Items {
+	for _, x := range nodes {
 		if x.Name == name {
 			return &x, true, nil
 		}
