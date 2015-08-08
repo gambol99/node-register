@@ -54,6 +54,8 @@ var config struct {
 	tag_name string
 	// the tag value
 	tag_value string
+	// show version
+	show_version bool
 }
 
 const (
@@ -77,10 +79,16 @@ func init() {
 	flag.DurationVar(&config.kube_node_downtime, "reap-interval", DEFAULT_REAPER_INTERVAL, "the amount of time a node can be down before removal")
 	flag.DurationVar(&config.time_interval, "interval", DEFAULT_SYNC_INTERVAL, "the amount of time in seconds to check if nodes registered")
 	flag.IntVar(&config.kube_health_port, "port", 10255, "the port the kubelet is running the health endpoint on")
+	flag.BoolVar(&config.show_version, "version", false, "display the node register version")
 }
 
 func parseConfig() error {
 	flag.Parse()
+	if config.show_version {
+		fmt.Printf("node-register: %s (%s), version: %s, git+sha: %s\n", AUTHOR, EMAIL, VERSION, GIT_SHA)
+		os.Exit(0)
+	}
+
 	// check: ensure the interval is great than 10 seconds
 	if config.time_interval < 10 {
 		return fmt.Errorf("the sync interval should be greater then 10 seconds")

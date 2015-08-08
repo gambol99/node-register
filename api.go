@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client"
+	"k8s.io/kubernetes/pkg/fields"
+	"k8s.io/kubernetes/pkg/labels"
 	"github.com/golang/glog"
 )
 
@@ -45,7 +45,7 @@ func newKubernetesInterface() (*KubernetesInterface, error) {
 			return nil, fmt.Errorf("unable to read the token file: %s, error: %s",
 				config.kube_token_file, err)
 		}
-		glog.V(5).Infof("Using the kubernetes token from file: %s", content)
+		glog.V(5).Infof("Using the kubernetes token from file: %s", config.kube_token_file)
 		config.kube_token = string(content)
 	}
 
@@ -90,12 +90,15 @@ func (r KubernetesInterface) GetFailedNodes() ([]api.Node, error) {
 		return nil, err
 	}
 	for _, x := range nodes {
+		glog.V(6).Infof("Checking node: %s for status condition", x.Name)
 		// step: skip any node without conditions
 		if len(x.Status.Conditions) <= 0 {
 			continue
 		}
 		condition := x.Status.Conditions[0]
-		if condition.Type != "Ready" {
+
+		glog.V(6).Infof("Node condition: %V for node: %s", condition, x.Name)
+		if condition.Status == api.ConditionUnknown || condition.Type != api.NodeReady {
 			filtered = append(filtered, x)
 		}
 	}

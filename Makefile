@@ -7,6 +7,7 @@
 NAME=node-register
 AUTHOR="gambol99"
 HARDWARE=$(shell uname -m)
+SHA=$(shell git log --pretty=format:'%h' -n 1)
 VERSION=$(shell awk '/VERSION/ { print $$3 }' version.go | sed 's/"//g')
 
 .PHONY: build docker clean release
@@ -14,6 +15,7 @@ VERSION=$(shell awk '/VERSION/ { print $$3 }' version.go | sed 's/"//g')
 build:
 	mkdir -p ./bin
 	mkdir -p ./release
+	sed -i "s/^const GIT_SHA.*/const GIT_SHA = \"${SHA}\"/" version.go
 	CGO_ENABLED=0 GOOS=linux go build -a -tags netgo -ldflags '-w' -o bin/node-register
 
 docker: build

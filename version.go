@@ -17,7 +17,9 @@ limitations under the License.
 package main
 
 const (
-	VERSION = "0.0.1"
+	VERSION = "0.0.2"
 	AUTHOR	= "Rohith"
 	EMAIL   = "gambol99@gmail.com"
 )
+
+const GIT_SHA = "381e88b"

@@ -20,7 +20,7 @@ import (
 	"net/http"
 
 	fleet "github.com/coreos/fleet/client"
-	kube "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
+	kube "k8s.io/kubernetes/pkg/client"
 )
 
 // FleetInterface ... is the interface used to extract the machines from fleet cluster
