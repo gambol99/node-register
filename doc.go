@@ -20,7 +20,7 @@ import (
 	"net/http"
 
 	fleet "github.com/coreos/fleet/client"
-	kube "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
+	kube "k8s.io/kubernetes/pkg/client"
 )
 
 // FleetInterface ... is the interface used to extract the machines from fleet cluster
@@ -37,9 +37,10 @@ type KubernetesInterface struct {
 	client *kube.Client
 }
 
-// the structure of a machine from fleet
+// Machine ... the structure of a machine from fleet
 type Machine struct {
+	// the name of the machine - the ip address
 	Name string
+	// the metadata associated to the machine
 	Metadata map[string]string
 }
-

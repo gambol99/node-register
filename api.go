@@ -20,45 +20,45 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client"
+	"k8s.io/kubernetes/pkg/fields"
+	"k8s.io/kubernetes/pkg/labels"
 	"github.com/golang/glog"
 )
 
 // newKubernetesInterface: creates a new client to speak to the kubernetes api service
 func newKubernetesInterface() (*KubernetesInterface, error) {
-	glog.Infof("Creating a kubernetes api client, endpoint: %s", config.kube_api)
+	glog.Infof("Creating a kubernetes api client, endpoint: %s", config.kubeApi)
 	// step: create a configuration for kubernetes api
 	kubecfg := client.Config{
-		Host:     config.kube_api,
-		Insecure: config.kube_insecure,
-		Version:  config.kube_version,
+		Host:     config.kubeApi,
+		Insecure: config.kubeInsecure,
+		Version:  config.kubeVersion,
 	}
 
 	// step: read in the token file is there is one
-	if config.kube_token_file != "" {
-		glog.V(4).Infof("Reading in the contents of the token file: %s", config.kube_token_file)
-		content, err := ioutil.ReadFile(config.kube_token_file)
+	if config.kubeTokenFile != "" {
+		glog.V(4).Infof("Reading in the contents of the token file: %s", config.kubeTokenFile)
+		content, err := ioutil.ReadFile(config.kubeTokenFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read the token file: %s, error: %s",
-				config.kube_token_file, err)
+				config.kubeTokenFile, err)
 		}
-		glog.V(5).Infof("Using the kubernetes token from file: %s", content)
-		config.kube_token = string(content)
+		glog.V(5).Infof("Using the kubernetes token from file: %s", config.kubeTokenFile)
+		config.kubeToken = string(content)
 	}
 
 	// step: are we using a user token to authenticate?
-	if config.kube_token != "" {
-		kubecfg.BearerToken = config.kube_token
+	if config.kubeToken != "" {
+		kubecfg.BearerToken = config.kubeToken
 	}
 
 	// step: are we using a cert to authenticate
-	if config.kube_cert != "" {
+	if config.kubeCert != "" {
 		kubecfg.Insecure = false
 		kubecfg.TLSClientConfig = client.TLSClientConfig{
-			CAFile: config.kube_cert,
+			CAFile: config.kubeCert,
 		}
 	}
 
@@ -90,12 +90,15 @@ func (r KubernetesInterface) GetFailedNodes() ([]api.Node, error) {
 		return nil, err
 	}
 	for _, x := range nodes {
+		glog.V(6).Infof("Checking node: %s for status condition", x.Name)
 		// step: skip any node without conditions
 		if len(x.Status.Conditions) <= 0 {
 			continue
 		}
 		condition := x.Status.Conditions[0]
-		if condition.Type != "Ready" {
+
+		glog.V(6).Infof("Node condition: %V for node: %s", condition, x.Name)
+		if condition.Status == api.ConditionUnknown || condition.Type != api.NodeReady {
 			filtered = append(filtered, x)
 		}
 	}
@@ -139,7 +142,7 @@ func (r KubernetesInterface) RegisterNode(machine *Machine) error {
 	node := new(api.Node)
 	node.Name = machine.Name
 	node.ObjectMeta.Name = machine.Name
-	node.APIVersion = config.kube_version
+	node.APIVersion = config.kubeVersion
 	node.Labels = machine.Metadata
 	node.Spec.ExternalID = machine.Name
 
