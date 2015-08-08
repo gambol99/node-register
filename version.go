@@ -17,7 +17,9 @@ limitations under the License.
 package main
 
 const (
-	VERSION = "0.0.1"
-	AUTHOR	= "Rohith"
-	EMAIL   = "gambol99@gmail.com"
+	Version = "0.0.4"
+	Author  = "Rohith Jayawardene"
+	Email   = "gambol99@gmail.com"
 )
+
+const GitSha = "21b99e6"

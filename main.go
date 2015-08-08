@@ -27,6 +27,10 @@ import (
 	"github.com/golang/glog"
 )
 
+var (
+	kapi *KubernetesInterface
+)
+
 func main() {
 	// step: parse the configuration
 	if err := parseConfig(); err != nil {
@@ -34,7 +38,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	glog.Infof("Starting the Node Register Service, version: %s", VERSION)
+	glog.Infof("Starting the Node Register Service, version: %s, git+sha: %s", Version, GitSha)
 
 	// step: create a fleet api interface
 	fleet, err := newFleetInterface()
@@ -44,9 +48,9 @@ func main() {
 	}
 
 	// step: create a client to the kubernetes api
-	kapi, err := newKubernetesInterface()
+	kapi, err = newKubernetesInterface()
 	if err != nil {
-		glog.Errorf("Failed to create a kubernetes client, endpoint: %s, error: %s", config.kube_api, err)
+		glog.Errorf("Failed to create a kubernetes client, endpoint: %s, error: %s", config.kubeApi, err)
 		os.Exit(1)
 	}
 
@@ -55,82 +59,33 @@ func main() {
 	signal.Notify(signalChannel, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	for {
-		// step: retrieve a list of machines and filter them to
-		machines, err := fleet.GetMachines()
-		if err != nil {
-			glog.Errorf("Failed to retrieve a list of machines from fleet, error: %s", err)
+		// step: are we working standalone or working for ourselve?
+		if !config.standalone {
+			// step: retrieve a list of machines and filter them to
+			machines, err := fleet.GetMachines()
+			if err != nil {
+				glog.Errorf("Failed to retrieve a list of machines from fleet, error: %s", err)
+				// step: jump to the next run
+			}
+			// step: register the machines with kubernetes
+			registerMachines(machines)
+
 		} else {
-			// step: filter out the machines and find any machines which match
-			for _, machine := range machines {
-				glog.V(5).Infof("Checking the machine: %s against the tags: %s=%s", machine, config.tag_name, config.tag_value)
-				// step: does the tag exist in the metadata
-				if _, found := machine.Metadata[config.tag_name]; !found {
-					glog.V(5).Infof("Skippng machine: '%s', does not have '%s' tag in metadata", machine.Name, config.tag_name)
-					continue
-				}
-				// step: is the value of the tag correct?
-				if tag, _ := machine.Metadata[config.tag_name]; tag != config.tag_value {
-					glog.V(5).Infof("Skipping machine: %s, machine tag value: '%s' not equal to '%s'", machine.Name,
-						tag, config.tag_value)
-					continue
-				}
-
-				// step: check to see if the node is healthy
-				if health := nodeHealthy(machine); !health {
-					glog.Errorf("The machine: %s is marked as unhealthy, skipping the node for now", machine.Name)
-					continue
-				}
-
-				// step: check if the node is registered
-				node, registered, err := kapi.IsRegistered(machine.Name)
-				if err != nil {
-					glog.Errorf("Unable to check if machine: %s is registered in kubernetes, error: %s", machine.Name, err)
-					continue
-				}
-
-				// step: is the node already registered?
-				if registered {
-					node_status := node.Status.Conditions[0].Type
-					glog.V(4).Infof("Node: %s already register, status: %s", node.Name, node_status)
-
-					// step: the node is already registered with kubernetes - the default behaviour is to
-					// check if the node status is running;
-					if node_status == "Ready" {
-						glog.V(4).Infof("Node: %s is in a running state, refusing to register a node in a running state", node.Name)
-						continue
-					}
-					glog.V(4).Infof("Deleting the node: %s and registering it later", node.Name)
-					// step: we delete and update node
-					if err := kapi.DeleteNode(machine.Name); err != nil {
-						glog.Errorf("Failed to delete the node: %s from kubernetes, error: %s", machine.Name, err)
-						continue
-					}
-				}
-				// step: register the node in kubernetes
-				if err := kapi.RegisterNode(machine); err != nil {
-					glog.Errorf("Failed to register the node, error: %s", err)
-				}
+			// step: grab our machine from
+			if machine, err := fleet.GetMachine(); err != nil {
+				glog.Errorf("Failed to retrieve our machine from fleet error: %s", err)
+			} else {
+				// step: register with kubernetes
+				registerMachine(machine)
 			}
 		}
 
 		// step: are we reaping nodes?
-		if config.kube_node_repear {
+		if config.kubeNodeRepear {
 			// step: grab a list of nodes from kubernetes
-			if nodes, err := kapi.GetFailedNodes(); err != nil {
-				glog.Errorf("Failed to retrieve the nodes from kubernetes, error: %s", err)
-			} else {
-				glog.V(4).Infof("Found %d nodes in a failed state", len(nodes))
-				for _, x := range nodes {
-					condition := x.Status.Conditions[0]
-					time_passed := time.Since(condition.LastHeartbeatTime.Time)
-					glog.V(5).Infof("Node: %s has been down for %s", x.Name, time_passed)
-					if time_passed > config.kube_node_downtime {
-						glog.V(3).Infof("The node: %s has been down for %s, removing the node now", x.Name, time_passed)
-						if err := kapi.DeleteNode(x.Name); err != nil {
-							glog.Errorf("Failed to remove the node: %s from kubernetes, error: %s", err)
-						}
-					}
-				}
+			err := reapNodes()
+			if err != nil {
+				glog.Errorf("Failed to reap the nodes, error: %s", err)
 			}
 		}
 
@@ -139,16 +94,110 @@ func main() {
 		case <-signalChannel:
 			glog.Infof("Recieved a shutdown signal, exiting")
 			os.Exit(0)
-		case <- time.After(config.time_interval):
+		case <- time.After(config.timeInterval):
 		}
 	}
 }
 
+// reapNodes() ... remove any nodes which haven't updated for a while
+func reapNodes() error {
+	nodes, err := kapi.GetFailedNodes()
+	if err != nil {
+		return fmt.Errorf("unable to retrieve the nodes from kubernetes, error: %s", err)
+	}
+
+	glog.V(4).Infof("Found %d nodes in a failed state", len(nodes))
+	for _, x := range nodes {
+		condition := x.Status.Conditions[0]
+		time_passed := time.Since(condition.LastHeartbeatTime.Time)
+		glog.V(5).Infof("Node: %s has been down for %s", x.Name, time_passed)
+		if time_passed > config.kubeNodeDowntime {
+			glog.V(3).Infof("The node: %s has been down for %s, removing the node now", x.Name, time_passed)
+			if err := kapi.DeleteNode(x.Name); err != nil {
+				glog.Errorf("unable to remove the node: %s from kubernetes, error: %s", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// registerMachines ... a wrapper for multiple machine registrations
+func registerMachines(machines []*Machine) error {
+	for _, machine := range machines {
+		if err := registerMachine(machine); err != nil {
+			glog.Errorf("Failed to register machine: %s, error: %s", machine.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// registerMachine() ... register the machine with Kubernetes.
+//  a) the machine must match the tag filter on the metadata
+//  b) we only register only if the node is responding as healthy
+// 	c) if the node is already registered, we will ONLY register is the node is matched as NodeNotReady (this aides with auto scaling groups)
+func registerMachine(machine *Machine) error {
+
+	// step: does the tag exist in the metadata
+	if _, found := machine.Metadata[config.tagName]; !found {
+		glog.V(5).Infof("Skippng machine: '%s', does not have '%s' tag in metadata", machine.Name, config.tagName)
+		return nil
+    }
+    // step: is the value of the tag correct?
+    if tag, _ := machine.Metadata[config.tagName]; tag != config.tagValue {
+		glog.V(5).Infof("Skipping machine: %s, machine tag value: '%s' not equal to '%s'", machine.Name, tag, config.tagValue)
+		return nil
+	}
+
+	// step: check to see if the node is healthy
+	if health := nodeHealthy(machine); !health {
+		return fmt.Errorf("the machine: %s is marked as unhealthy, skipping the node for now", machine.Name)
+	}
+
+	// step: add in the environment variables before registration
+	for name, value := range config.labels {
+		machine.Metadata[name] = value
+	}
+
+	// step: check if the node is registered
+	node, registered, err := kapi.IsRegistered(machine.Name)
+	if err != nil {
+		return fmt.Errorf("Unable to check if machine: %s is registered in kubernetes, error: %s", machine.Name, err)
+	}
+
+	// step: is the node already registered?
+	if registered {
+		node_status := node.Status.Conditions[0].Type
+		glog.V(4).Infof("Node: %s already register, status: %s", node.Name, node_status)
+
+		// step: the node is already registered with kubernetes - the default behaviour is to
+		// check if the node status is running;
+		if node_status == "Ready" {
+			glog.V(4).Infof("Node: %s is in a running state, refusing to register a node in a running state", node.Name)
+			return nil
+		}
+
+		glog.V(4).Infof("Deleting the node: %s and registering it later", node.Name)
+		// step: we delete and update node
+		if err := kapi.DeleteNode(machine.Name); err != nil {
+			return fmt.Errorf("Failed to delete the node: %s from kubernetes, error: %s", machine.Name, err)
+		}
+	}
+
+	// step: register the node in kubernetes
+	if err := kapi.RegisterNode(machine); err != nil {
+		return fmt.Errorf("Failed to register the node, error: %s", err)
+	}
+
+	return nil
+}
+
 // nodeHealthy() ... checks to see if the node in a healthy condition
 func nodeHealthy(machine *Machine) bool {
-	glog.V(4).Infof("Checking if the node: %s is in a healthy condition on port: %d", machine.Name, config.kube_health_port)
+	glog.V(4).Infof("Checking if the node: %s is in a healthy condition on port: %d", machine.Name, config.kubeHealthPort)
 	// step: call the /healthz url
-	url := fmt.Sprintf("http://%s:%d/healthz", machine.Name, config.kube_health_port)
+	url := fmt.Sprintf("http://%s:%d/healthz", machine.Name, config.kubeHealthPort)
 	response, err := http.Get(url)
 	if err != nil {
 		glog.Errorf("Unable to check the health of the node: %s, error: %s", machine.Name, err)

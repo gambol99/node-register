@@ -7,7 +7,8 @@
 FROM busybox:latest
 MAINTAINER Rohith <gambol99@gmail.com>
 
-ADD bin/node-register /bin/node-register
-RUN chmod +x /bin/node-register
+ADD https://github.com/gambol99/node-register/releases/download/v0.0.4/node-register_0.0.4_linux_x86_64.gz /node-register.gz
+RUN gunzip /node-register.gz && \
+    chmod +x /node-register
 
-ENTRYPOINT [ "/bin/node-register" ]
+ENTRYPOINT [ "/node-register" ]
