@@ -8,7 +8,7 @@ NAME=node-register
 AUTHOR="gambol99"
 HARDWARE=$(shell uname -m)
 SHA=$(shell git log --pretty=format:'%h' -n 1)
-VERSION=$(shell awk '/VERSION/ { print $$3 }' version.go | sed 's/"//g')
+VERSION=$(shell awk '/Version =/ { print $$3 }' version.go | sed 's/"//g')
 
 .PHONY: build docker clean release
 

@@ -22,4 +22,4 @@ const (
 	Email   = "gambol99@gmail.com"
 )
 
-const GitSha = "1316a51"
+const GitSha = "f57144d"
