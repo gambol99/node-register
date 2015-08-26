@@ -7,7 +7,8 @@
 FROM busybox:latest
 MAINTAINER Rohith <gambol99@gmail.com>
 
-ADD bin/node-register /bin/node-register
-RUN chmod +x /bin/node-register
+ADD https://drone.io/github.com/gambol99/node-register/files/bin/node-register.gz /bin/node-register.gz
+RUN gunzip /bin/node-register.gz && \
+    chmod +x /bin/node-register
 
 ENTRYPOINT [ "/bin/node-register" ]
