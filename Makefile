@@ -5,18 +5,20 @@
 #  vim:ts=2:sw=2:et
 #
 NAME=node-register
-AUTHOR="gambol99"
+AUTHOR=gambol99
 HARDWARE=$(shell uname -m)
 SHA=$(shell git log --pretty=format:'%h' -n 1)
 VERSION=$(shell awk '/Version =/ { print $$3 }' version.go | sed 's/"//g')
 
-.PHONY: build docker clean release
+.PHONY: build docker docker-release clean release
+
+default: build
 
 build:
 	mkdir -p ./bin
 	mkdir -p ./release
 	sed -i "s/^const GitSha.*/const GitSha = \"${SHA}\"/" version.go
-	CGO_ENABLED=0 GOOS=linux go build -a -tags netgo -ldflags '-w' -o bin/node-register
+	CGO_ENABLED=0 GOOS=linux godep go build -a -tags netgo -ldflags '-w' -o bin/node-register
 
 docker: build
 	sudo docker build -t ${AUTHOR}/${NAME} .
@@ -31,6 +33,8 @@ release:
 	gzip -c release/${NAME} > release/${NAME}_${VERSION}_linux_${HARDWARE}.gz
 	rm -f release/${NAME}
 	# github-release release -r node-register -n "node-register, version: ${VERSION}" -u gambol99 --pre-release -t v${VERSION}
-    # github-release upload --name node-register_${VERSION}_linux_x86_64.gz -f node-register_0.0.2_linux_x86_64.gz -r node-register -u gambol99 -t v${VERSION}
+  # github-release upload --name node-register_${VERSION}_linux_x86_64.gz -f node-register_0.0.2_linux_x86_64.gz -r node-register -u gambol99 -t v${VERSION}
 
-    
+docker-release: docker
+	docker tag -f gambol99/node-register:latest docker.io/gambol99/node-register:latest
+	docker push docker.io/gambol99/node-register:latest

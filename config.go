@@ -81,6 +81,7 @@ func init() {
 	flag.StringVar(&config.kubeApi, "api", "https://127.0.0.1:6443", "the kubernetes api endpoint to register against")
 	flag.StringVar(&config.kubeToken, "token", "", "a kubernetes api token to used when connecting to the endpoint")
 	flag.StringVar(&config.kubeTokenFile, "token-file", "", "a file container a token to authenticate to kubernetes")
+	flag.BoolVar(&config.kubeInsecure, "insecure", false, "don't check the certifacte for the api")
 	flag.StringVar(&config.kubeCert, "cert", "", "a client cerfiticate to use to authenticate with kubernetes")
 	flag.StringVar(&config.metadata, "metadata", "role=kubernetes", "the fleet metadata with are using to filter nodes")
 	flag.StringVar(&config.fleetSocket, "fleet", "unix://var/run/fleet.sock", "the path to the fleet unix socket")
