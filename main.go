@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -41,16 +42,16 @@ func main() {
 	glog.Infof("Starting the Node Register Service, version: %s, git+sha: %s", Version, GitSha)
 
 	// step: create a fleet api interface
-	fleet, err := newFleetInterface()
+	fleet, err := NewFleetInterface()
 	if err != nil {
 		glog.Errorf("Failed to create fleet api, error: %s", err)
 		os.Exit(1)
 	}
 
 	// step: create a client to the kubernetes api
-	kapi, err = newKubernetesInterface()
+	kapi, err = NewKubernetesInterface()
 	if err != nil {
-		glog.Errorf("Failed to create a kubernetes client, endpoint: %s, error: %s", config.kubeApi, err)
+		glog.Errorf("Failed to create a kubernetes client, endpoint: %s, error: %s", config.kubeAPI, err)
 		os.Exit(1)
 	}
 
@@ -94,7 +95,7 @@ func main() {
 		case <-signalChannel:
 			glog.Infof("Recieved a shutdown signal, exiting")
 			os.Exit(0)
-		case <- time.After(config.timeInterval):
+		case <-time.After(config.timeInterval):
 		}
 	}
 }
@@ -109,12 +110,12 @@ func reapNodes() error {
 	glog.V(4).Infof("Found %d nodes in a failed state", len(nodes))
 	for _, x := range nodes {
 		condition := x.Status.Conditions[0]
-		time_passed := time.Since(condition.LastHeartbeatTime.Time)
-		glog.V(5).Infof("Node: %s has been down for %s", x.Name, time_passed)
-		if time_passed > config.kubeNodeDowntime {
-			glog.V(3).Infof("The node: %s has been down for %s, removing the node now", x.Name, time_passed)
+		timePassed := time.Since(condition.LastHeartbeatTime.Time)
+		glog.V(5).Infof("Node: %s has been down for %s", x.Name, timePassed)
+		if timePassed > config.kubeNodeDowntime {
+			glog.V(3).Infof("The node: %s has been down for %s, removing the node now", x.Name, timePassed)
 			if err := kapi.DeleteNode(x.Name); err != nil {
-				glog.Errorf("unable to remove the node: %s from kubernetes, error: %s", err)
+				glog.Errorf("unable to remove the node: %s from kubernetes, error: %s", x.Name, err)
 			}
 		}
 	}
@@ -138,22 +139,38 @@ func registerMachines(machines []*Machine) error {
 //  b) we only register only if the node is responding as healthy
 // 	c) if the node is already registered, we will ONLY register is the node is matched as NodeNotReady (this aides with auto scaling groups)
 func registerMachine(machine *Machine) error {
+	var err error
+
+	registeredName := machine.Name
+
+	// step: are we using dns hostname
+	if config.dnsResolve {
+		hostNames, err := net.LookupAddr(machine.Name)
+		if err != nil {
+			glog.Errorf("failed to resolve the ip address: %s, error: %s", machine.Name, err)
+			return err
+		}
+		registeredName = hostNames[0]
+	}
 
 	// step: does the tag exist in the metadata
 	if _, found := machine.Metadata[config.tagName]; !found {
 		glog.V(5).Infof("Skippng machine: '%s', does not have '%s' tag in metadata", machine.Name, config.tagName)
 		return nil
-    }
-    // step: is the value of the tag correct?
-    if tag, _ := machine.Metadata[config.tagName]; tag != config.tagValue {
+	}
+	// step: is the value of the tag correct?
+	if tag, _ := machine.Metadata[config.tagName]; tag != config.tagValue {
 		glog.V(5).Infof("Skipping machine: %s, machine tag value: '%s' not equal to '%s'", machine.Name, tag, config.tagValue)
 		return nil
 	}
 
 	// step: check to see if the node is healthy
-	if health := nodeHealthy(machine); !health {
+	if health := nodeHealthy(machine.Name); !health {
 		return fmt.Errorf("the machine: %s is marked as unhealthy, skipping the node for now", machine.Name)
 	}
+
+	// step: update the name if required
+	machine.Name = registeredName
 
 	// step: add in the environment variables before registration
 	for name, value := range config.labels {
@@ -168,12 +185,12 @@ func registerMachine(machine *Machine) error {
 
 	// step: is the node already registered?
 	if registered {
-		node_status := node.Status.Conditions[0].Type
-		glog.V(4).Infof("Node: %s already register, status: %s", node.Name, node_status)
+		nodeStatus := node.Status.Conditions[0].Type
+		glog.V(4).Infof("Node: %s already register, status: %s", node.Name, nodeStatus)
 
 		// step: the node is already registered with kubernetes - the default behaviour is to
 		// check if the node status is running;
-		if node_status == "Ready" {
+		if nodeStatus == "Ready" {
 			glog.V(4).Infof("Node: %s is in a running state, refusing to register a node in a running state", node.Name)
 			return nil
 		}
@@ -193,22 +210,23 @@ func registerMachine(machine *Machine) error {
 	return nil
 }
 
-// nodeHealthy() ... checks to see if the node in a healthy condition
-func nodeHealthy(machine *Machine) bool {
-	glog.V(4).Infof("Checking if the node: %s is in a healthy condition on port: %d", machine.Name, config.kubeHealthPort)
+// nodeHealthy checks to see if the node in a healthy condition
+func nodeHealthy(hostname string) bool {
+	glog.V(4).Infof("Checking if the node: %s is in a healthy condition on port: %d", hostname, config.kubeHealthPort)
 	// step: call the /healthz url
-	url := fmt.Sprintf("http://%s:%d/healthz", machine.Name, config.kubeHealthPort)
+	url := fmt.Sprintf("http://%s:%d/healthz", hostname, config.kubeHealthPort)
 	response, err := http.Get(url)
 	if err != nil {
-		glog.Errorf("Unable to check the health of the node: %s, error: %s", machine.Name, err)
+		glog.Errorf("Unable to check the health of the node: %s, error: %s", hostname, err)
 		return false
 	}
 	defer response.Body.Close()
 	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusBadRequest {
-		glog.V(4).Infof("Machine: %s is healthy and responding to /healthz", machine.Name)
+		glog.V(4).Infof("Machine: %s is healthy and responding to /healthz", hostname)
 		return true
 	}
 
-	glog.V(4).Infof("Machine: %s is not in a healthy condition, response: %s", machine.Name, response.Body)
+	glog.V(4).Infof("Machine: %s is not in a healthy condition, response: %s", hostname, response.Body)
+
 	return false
 }

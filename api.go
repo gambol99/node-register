@@ -20,19 +20,19 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
-	"github.com/golang/glog"
 )
 
-// newKubernetesInterface: creates a new client to speak to the kubernetes api service
-func newKubernetesInterface() (*KubernetesInterface, error) {
-	glog.Infof("Creating a kubernetes api client, endpoint: %s", config.kubeApi)
+// NewKubernetesInterface creates a new client to speak to the kubernetes api service
+func NewKubernetesInterface() (*KubernetesInterface, error) {
+	glog.Infof("Creating a kubernetes api client, endpoint: %s", config.kubeAPI)
 	// step: create a configuration for kubernetes api
 	kubecfg := client.Config{
-		Host:     config.kubeApi,
+		Host:     config.kubeAPI,
 		Insecure: config.kubeInsecure,
 		Version:  config.kubeVersion,
 	}
@@ -72,7 +72,7 @@ func newKubernetesInterface() (*KubernetesInterface, error) {
 	return service, nil
 }
 
-// GetNodes() ... get a list of registered kubernetes nodes
+// GetNodes get a list of registered kubernetes nodes
 func (r KubernetesInterface) GetNodes() ([]api.Node, error) {
 	nodes, err := r.client.Nodes().List(labels.Everything(), fields.Everything())
 	if err != nil {
@@ -81,10 +81,11 @@ func (r KubernetesInterface) GetNodes() ([]api.Node, error) {
 	return nodes.Items, err
 }
 
-// GetFailedNodes() ... get a list of nodes in a failed state
+// GetFailedNodes get a list of nodes in a failed state
 func (r KubernetesInterface) GetFailedNodes() ([]api.Node, error) {
 	// step: first get the list and then filter then
-	filtered := make([]api.Node, 0)
+	var filtered []api.Node
+
 	nodes, err := r.GetNodes()
 	if err != nil {
 		return nil, err
@@ -105,7 +106,7 @@ func (r KubernetesInterface) GetFailedNodes() ([]api.Node, error) {
 	return filtered, nil
 }
 
-// IsRegistered() ... checks to see if a node is registered with kubernetes
+// IsRegistered checks to see if a node is registered with kubernetes
 func (r KubernetesInterface) IsRegistered(name string) (*api.Node, bool, error) {
 	glog.V(5).Infof("Checking if node: %s is registered with kubernetes", name)
 	// step: get a list of nodes
@@ -121,13 +122,13 @@ func (r KubernetesInterface) IsRegistered(name string) (*api.Node, bool, error) 
 	return nil, false, nil
 }
 
-// DeleteNode ... delete the node from kubernetes
+// DeleteNode delete the node from kubernetes
 func (r KubernetesInterface) DeleteNode(name string) error {
 	glog.V(3).Infof("Deleting the node: %s from kubernetes", name)
 	return r.client.Nodes().Delete(name)
 }
 
-// RegisterNode() ... register a node with kubernetes
+// RegisterNode register a node with kubernetes
 func (r KubernetesInterface) RegisterNode(machine *Machine) error {
 	glog.V(4).Infof("Registering the machine: %s with kubernetes api", machine)
 

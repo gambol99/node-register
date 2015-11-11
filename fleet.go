@@ -27,8 +27,8 @@ import (
 	"github.com/golang/glog"
 )
 
-// newFleetInterface ... creates a new interface to interact to the fleet cluster service
-func newFleetInterface() (*FleetInterface, error) {
+// NewFleetInterface creates a new interface to interact to the fleet cluster service
+func NewFleetInterface() (*FleetInterface, error) {
 	glog.V(3).Infof("Creating a client to fleet service, endpoint: %s", config.fleetSocket)
 	service := new(FleetInterface)
 
@@ -45,29 +45,29 @@ func newFleetInterface() (*FleetInterface, error) {
 
 	location.Scheme = "http"
 	location.Host = "domain-sock"
-	socket_path := location.Path
+	socketPath := location.Path
 	location.Path = ""
 
 	// step: create the http client
-	service.http_client = &http.Client{
+	service.httpClient = &http.Client{
 		Timeout: time.Duration(10) * time.Second,
 		Transport: &http.Transport{
-			Dial:	func(network, addr string) (net.Conn, error) {
-				return net.Dial("unix", socket_path)
+			Dial: func(network, addr string) (net.Conn, error) {
+				return net.Dial("unix", socketPath)
 			},
 			DisableKeepAlives: true,
 		},
 	}
 
 	// step: create the fleet client
-	service.fleet_client, err = fleet.NewHTTPClient(service.http_client, *location)
+	service.fleetClient, err = fleet.NewHTTPClient(service.httpClient, *location)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create the fleet api client, error: %s", err)
 	}
 	return service, nil
 }
 
-// GetMachine ... get my machine from fleet
+// GetMachine get my machine from fleet
 func (r FleetInterface) GetMachine() (*Machine, error) {
 	// step: get all the machines
 	machines, err := r.GetMachines()
@@ -76,25 +76,26 @@ func (r FleetInterface) GetMachine() (*Machine, error) {
 	}
 	// step: iterate and find the machine
 	for _, machine := range machines {
-		if machine.Name == config.fleetIpAddress {
+		if machine.Name == config.fleetIPAddress {
 			return machine, nil
 		}
 	}
 
-	return nil, fmt.Errorf("unable to find the machine: %s in the list of machines", config.fleetIpAddress)
+	return nil, fmt.Errorf("unable to find the machine: %s in the list of machines", config.fleetIPAddress)
 }
 
-
-// GetMachines ... return a list of machines from fleet
+// GetMachines return a list of machines from fleet
 func (r FleetInterface) GetMachines() ([]*Machine, error) {
 	glog.V(5).Infof("Retrieving a list of the machines in the fleet cluster")
+
 	// step: get the list of machines
-	machines, err := r.fleet_client.Machines()
+	machines, err := r.fleetClient.Machines()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve a list of machines from fleet, error: %s", err)
 	}
 	// step: constructing a list of machine
-	list := make([]*Machine, 0)
+	var list []*Machine
+
 	for _, x := range machines {
 		machine := &Machine{
 			Name:     x.PublicIP,

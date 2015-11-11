@@ -26,9 +26,9 @@ import (
 // FleetInterface ... is the interface used to extract the machines from fleet cluster
 type FleetInterface struct {
 	// the http client
-	http_client *http.Client
+	httpClient *http.Client
 	// the fleet client
-	fleet_client fleet.API
+	fleetClient fleet.API
 }
 
 // KubernetesInterface ... the interface to speak to the kubernetes api

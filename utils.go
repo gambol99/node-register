@@ -23,22 +23,24 @@ import (
 )
 
 func getInterfaceAddress(name string) (string, error) {
-	if interfaces, err := net.Interfaces(); err != nil {
+	interfaces, err := net.Interfaces()
+	if err != nil {
 		return "", err
-	} else {
-		for _, iface := range interfaces {
-			/* step: get only the interface we're interested in */
-			if iface.Name == name {
-				addrs, err := iface.Addrs()
-				if err != nil {
-					return "", err
-				}
-				/* step: return the first address */
-				if len(addrs) > 0 {
-					return strings.SplitN(addrs[0].String(), "/", 2)[0], nil
-				}
+	}
+
+	for _, iface := range interfaces {
+		/* step: get only the interface we're interested in */
+		if iface.Name == name {
+			addrs, err := iface.Addrs()
+			if err != nil {
+				return "", err
+			}
+			/* step: return the first address */
+			if len(addrs) > 0 {
+				return strings.SplitN(addrs[0].String(), "/", 2)[0], nil
 			}
 		}
 	}
+
 	return "", fmt.Errorf("unable to determine or find the interface: %s", name)
 }

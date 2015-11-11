@@ -19,11 +19,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"regexp"
-	"os"
 	"net/url"
-	"time"
+	"os"
+	"regexp"
 	"strings"
+	"time"
 )
 
 var config struct {
@@ -36,7 +36,7 @@ var config struct {
 	// a kube cert file
 	kubeCert string
 	// the kube endpoint
-	kubeApi string
+	kubeAPI string
 	// insecure connection?
 	kubeInsecure bool
 	// the port kubelet is serving health checks on
@@ -45,6 +45,8 @@ var config struct {
 	kubeNodeRepear bool
 	// the time for a node to be offline and reaper
 	kubeNodeDowntime time.Duration
+	// resolve the dns
+	dnsResolve bool
 	// the metadata used to filter the nodes
 	metadata string
 	// the socket for fleet
@@ -52,7 +54,7 @@ var config struct {
 	// the interface fleet is using as public ip
 	fleetInterface string
 	// the public ip address of fleet
-	fleetIpAddress string
+	fleetIPAddress string
 	// the interval to wait
 	timeInterval time.Duration
 	// the tag name
@@ -68,30 +70,31 @@ var config struct {
 }
 
 const (
-	DEFAULT_SYNC_INTERVAL   = time.Duration(60) * time.Second
-	DEFAULT_REAPER_INTERVAL = time.Duration(1) * time.Hour
+	defaultSyncInterval   = time.Duration(60) * time.Second
+	defaultReaperInterval = time.Duration(1) * time.Hour
 )
 
 var (
-	metadata_regex = regexp.MustCompile("^([[:alnum:]]*)=([[:alnum:]]*)$")
+	metadataRegex = regexp.MustCompile("^([[:alnum:]]*)=([[:alnum:]]*)$")
 )
 
 func init() {
 	parseEnvironmentVars(os.Environ())
-	flag.StringVar(&config.kubeApi, "api", "https://127.0.0.1:6443", "the kubernetes api endpoint to register against")
+	flag.StringVar(&config.kubeAPI, "api", "https://127.0.0.1:6443", "the kubernetes api endpoint to register against")
 	flag.StringVar(&config.kubeToken, "token", "", "a kubernetes api token to used when connecting to the endpoint")
 	flag.StringVar(&config.kubeTokenFile, "token-file", "", "a file container a token to authenticate to kubernetes")
 	flag.BoolVar(&config.kubeInsecure, "insecure", false, "don't check the certifacte for the api")
+	flag.BoolVar(&config.dnsResolve, "dns-resolve", false, "resolve the ip addres into a dns name before registering")
 	flag.StringVar(&config.kubeCert, "cert", "", "a client cerfiticate to use to authenticate with kubernetes")
 	flag.StringVar(&config.metadata, "metadata", "role=kubernetes", "the fleet metadata with are using to filter nodes")
 	flag.StringVar(&config.fleetSocket, "fleet", "unix://var/run/fleet.sock", "the path to the fleet unix socket")
 	flag.StringVar(&config.fleetInterface, "interface", "", "you can either specify the interface and we'll grab the ip address or the ip below")
-	flag.StringVar(&config.fleetIpAddress, "address", "", "the public ip address using by fleet, only used on standalone mode")
+	flag.StringVar(&config.fleetIPAddress, "address", "", "the public ip address using by fleet, only used on standalone mode")
 	flag.StringVar(&config.kubeVersion, "api-version", "v1", "the kubernetes api version")
 	flag.BoolVar(&config.standalone, "standalone", false, "switch the service into standalone mode, i.e. we only register ourself")
 	flag.BoolVar(&config.kubeNodeRepear, "node-reaper", false, "enable the removal of dead nodes from the kubernetes")
-	flag.DurationVar(&config.kubeNodeDowntime, "reap-interval", DEFAULT_REAPER_INTERVAL, "the amount of time a node can be down before removal")
-	flag.DurationVar(&config.timeInterval, "interval", DEFAULT_SYNC_INTERVAL, "the amount of time in seconds to check if nodes registered")
+	flag.DurationVar(&config.kubeNodeDowntime, "reap-interval", defaultReaperInterval, "the amount of time a node can be down before removal")
+	flag.DurationVar(&config.timeInterval, "interval", defaultSyncInterval, "the amount of time in seconds to check if nodes registered")
 	flag.IntVar(&config.kubeHealthPort, "port", 10255, "the port the kubelet is running the health endpoint on")
 	flag.BoolVar(&config.showVersion, "version", false, "display the node register version")
 }
@@ -102,14 +105,14 @@ func parseEnvironmentVars(envs []string) {
 
 	var regex = regexp.MustCompile("^NODE_REGISTER_(.*)=(.*)$")
 	// step: iterate the environment variables
-	for _, key_name := range envs {
+	for _, keyName := range envs {
 		// check if 'no' match and continue
-		if matched := regex.MatchString(key_name); !matched {
+		if matched := regex.MatchString(keyName); !matched {
 			continue
 		}
 
 		// step: grab the matches
-		matches := regex.FindAllStringSubmatch(key_name, -1)
+		matches := regex.FindAllStringSubmatch(keyName, -1)
 
 		config.labels[strings.ToLower(matches[0][1])] = matches[0][2]
 	}
@@ -129,7 +132,7 @@ func parseConfig() error {
 		return fmt.Errorf("the sync interval should be greater then 10 seconds")
 	}
 	// check: ensure the metadata is valid
-	if matched := metadata_regex.MatchString(config.metadata); !matched {
+	if matched := metadataRegex.MatchString(config.metadata); !matched {
 		return fmt.Errorf("invalid metadata, should be tag=value format")
 	}
 	// check: ensure the token file exists
@@ -146,24 +149,24 @@ func parseConfig() error {
 	}
 
 	// check: ensure the url is valid
-	if _, err := url.Parse(config.kubeApi); err != nil {
+	if _, err := url.Parse(config.kubeAPI); err != nil {
 		return fmt.Errorf("invalid url for kubernete api, error: %s", err)
 	}
 
 	// step: extract the tags
-	matches := metadata_regex.FindAllStringSubmatch(config.metadata, 1)[0]
+	matches := metadataRegex.FindAllStringSubmatch(config.metadata, 1)[0]
 	config.tagName = string(matches[1])
 	config.tagValue = string(matches[2])
 
 	// step: if we are running in standalone more, we need the ip address
 	if config.standalone {
 		// check: we need interface or ip set
-		if config.fleetIpAddress == "" && config.fleetInterface == "" {
+		if config.fleetIPAddress == "" && config.fleetInterface == "" {
 			return fmt.Errorf("you have to set either fleet interface or the public ip address")
 		}
 
 		if config.fleetInterface != "" {
-			config.fleetIpAddress, err = getInterfaceAddress(config.fleetInterface)
+			config.fleetIPAddress, err = getInterfaceAddress(config.fleetInterface)
 			if err != nil {
 				return err
 			}
@@ -172,5 +175,3 @@ func parseConfig() error {
 
 	return nil
 }
-
-
